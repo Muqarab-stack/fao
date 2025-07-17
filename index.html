@@ -1165,7 +1165,7 @@ function updateCropOptions(basinName) {
     showLoading(`Loading crop ${cropName}...`);
     debug(`Loading crop: ${cropName} in ${basinName}`);
 
-    fetch(`/data/crops/${basinName}/${cropName}.geojson`)
+    fetch(`/Data/crops/${basinName}/${cropName}.geojson`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
