@@ -1036,7 +1036,7 @@ function updateCropOptions(basinName) {
     showLoading(`Loading basin ${basinName}...`);
     debug(`Loading basin: ${basinName}`);
 
-    fetch(`/data/basins/${basinName}.geojson`)
+    fetch(`/Data/basins/${basinName}.geojson`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
