@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crop Mapping Dashboard for FAO</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Font Awesome for icons (lazy-loaded in script) -->
+    <style>
+        :root {
+            --primary-color: #1e90ff;
+            --danger-color: #e74c3c;
+            --success-color: #e74c3c;
+            --watershed-fao-color: #27ae60;
+            --watershed-other-color: #2980b9;
+            --basin-color: #8e44ad;
+            --text-color: #2c3e50;
+            --bg-color: #ffffff;
+            --panel-bg: #f8f9fa;
+            --shadow: 0 4px 12px rgba(0,0,0,0.15);
+            --border-radius: 8px; /* Reduced for compactness */
+            --transition: all 0.2s ease; /* Faster transitions */
+            --high-contrast-text: #000000;
+            --high-contrast-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --primary-color: #4dabf7;
+            --danger-color: #ff6b6b;
+            --success-color: #ff6b6b;
+            --watershed-fao-color: #2ecc71;
+            --watershed-other-color: #3498db;
+            --basin-color: #9b59b6;
+            --text-color: #e0e0e0;
+            --bg-color: #1a1a1a;
+            --panel-bg: #2c2c2c;
+            --high-contrast-text: #ffffff;
+            --high-contrast-bg: #333333;
+        }
+
+        [data-contrast="high"] {
+            --text-color: var(--high-contrast-text);
+            --bg-color: var(--high-contrast-bg);
+            --panel-bg: var(--high-contrast-bg);
+            --primary-color: #007bff;
+            --success-color: #c0392b;
+            --basin-color: #8e44ad;
+            --shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            color: var(--text-color);
+            background: var(--bg-color);
+        }
+
+        #header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(90deg, var(--primary-color), #3498db);
+            color: white;
+            padding: 12px 20px;
+            z-index: 2000;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #header h1 {
+            margin: 0;
+            font-size: 18px; /* Smaller for compactness */
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #header img {
+            height: 28px;
+        }
+
+        #header .toggles {
+            display: flex;
+            gap: 15px; /* Increased spacing */
+        }
+
+        #container {
+            display: flex;
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+        }
+
+        #controls {
+            width: 280px; /* Reduced width */
+            padding: 20px;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            overflow-y: auto;
+        }
+
+        #controls.collapsed {
+            transform: translateX(-100%);
+        }
+
+        #map {
+            flex-grow: 1;
+            height: 100%;
+        }
+
+        .data-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--panel-bg);
+            border-radius: var(--border-radius);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: var(--transition);
+        }
+
+        .data-section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0 0 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h2 {
+            font-size: 16px;
+            margin: 0 0 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
+        h2 i {
+            color: var(--primary-color);
+        }
+
+        select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: var(--border-radius);
+            border: 1px solid #ddd;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        select {
+            background: var(--bg-color) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%231e90ff' d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E") no-repeat right 10px center;
+            appearance: none;
+            padding-right: 30px;
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover:not(:disabled) {
+            background: #187bcd;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        #loading {
+            position: fixed;
+            top: 200px; /* Adjusted to appear below watershed legend */
+            right: 20px;
+            background: rgba(255,255,255,0.95);
+            padding: 12px 18px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            display: none;
+            z-index: 998; /* Below legends */
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        #loading i {
+            color: var(--primary-color);
+            margin-right: 8px;
+        }
+
+        #loading-progress {
+            width: 100%;
+            height: 4px;
+            background: #eee;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        #loading-progress-bar {
+            width: 0;
+            height: 100%;
+            background: var(--primary-color);
+            transition: width 0.2s ease;
+        }
+
+        #message {
+            position: fixed;
+            top: 250px; /* Below loading */
+            right: 20px;
+            background: rgba(255,255,255,0.95);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            display: none;
+            z-index: 998;
+            max-width: 300px;
+            font-size: 13px;
+        }
+
+        #message.error {
+            background: rgba(231, 76, 60, 0.95);
+            color: white;
+        }
+
+        #message button.close {
+            margin-top: 8px;
+            padding: 8px;
+            font-size: 12px;
+            background: #fff;
+            color: var(--text-color);
+        }
+
+        .layer-control {
+            margin-bottom: 10px;
+            padding: 12px;
+            background: var(--bg-color);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: var(--transition);
+        }
+
+        .layer-control:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            background: #f1f3f5;
+        }
+
+        .layer-control input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+
+        .layer-control label {
+            flex-grow: 1;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .layer-control input[type="range"] {
+            width: 60px;
+            cursor: pointer;
+        }
+
+        .layer-control button {
+            width: auto;
+            padding: 5px;
+            background: none;
+            color: var(--danger-color);
+        }
+
+        .layer-control button:hover {
+            background: #fff1f0;
+            color: #c0392b;
+        }
+
+        .debug-info {
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: var(--border-radius);
+        }
+
+        #debugOutput {
+            max-height: 120px;
+            overflow-y: auto;
+            background: var(--bg-color);
+            padding: 12px;
+            border-radius: var(--border-radius);
+            font-size: 12px;
+            border: 1px solid #eee;
+            display: none; /* Hidden by default */
+        }
+
+        #debug-toggle {
+            background: none;
+            color: var(--text-color);
+            padding: 5px;
+            font-size: 12px;
+        }
+
+        #toggle-controls {
+            position: absolute;
+            top: 80px;
+            left: 15px;
+            z-index: 1000;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 12px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            display: none;
+            box-shadow: var(--shadow);
+        }
+
+        #active-layers {
+            max-height: 180px;
+            overflow-y: auto;
+            padding: 6px;
+            border: 1px solid #eee;
+            border-radius: var(--border-radius);
+            background: var(--panel-bg);
+        }
+
+        #clear-layers, #fit-all-layers {
+            margin-top: 10px;
+        }
+
+        #clear-layers {
+            background: var(--danger-color);
+        }
+
+        #clear-layers:hover {
+            background: #c0392b;
+        }
+
+        #crop-legend {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.95);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            z-index: 999;
+            max-width: 260px;
+            display: none;
+            font-size: 12px;
+        }
+
+        #watershed-legend {
+            position: fixed;
+            top: 80px;
+            right: 15px;
+            background: rgba(255,255,255,0.95);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            z-index: 999;
+            max-width: 260px;
+            font-size: 12px;
+        }
+
+        #crop-legend.collapsed, #watershed-legend.collapsed {
+            height: 40px;
+            overflow: hidden;
+        }
+
+        #crop-legend h3, #watershed-legend h3 {
+            margin: 0 0 10px;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        #crop-legend ul, #watershed-legend ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #crop-legend li, #watershed-legend li {
+            font-size: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+
+        #crop-legend li::before {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: var(--success-color);
+            margin-right: 8px;
+            border-radius: 3px;
+        }
+
+        #watershed-legend li.fao::before {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: var(--watershed-fao-color);
+            margin-right: 8px;
+            border-radius: 3px;
+        }
+
+        #watershed-legend li.other::before {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: var(--watershed-other-color);
+            margin-right: 8px;
+            border-radius: 3px;
+        }
+
+        #crop-legend-toggle, #watershed-legend-toggle {
+            background: none;
+            color: var(--text-color);
+            padding: 0;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+        }
+
+        #theme-toggle, #contrast-toggle {
+            background: none;
+            color: white;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        #theme-toggle:hover, #contrast-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        .leaflet-popup-content-wrapper, .leaflet-tooltip {
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        .leaflet-popup-content {
+            margin: 12px 15px;
+            line-height: 1.6;
+            font-size: 13px;
+        }
+
+        .leaflet-popup-content b {
+            color: var(--text-color);
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .leaflet-tooltip {
+            background: rgba(255, 255, 255, 0.95);
+            color: var(--text-color);
+            font-weight: 600;
+            padding: 6px 10px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            #controls {
+                width: 260px;
+            }
+            #crop-legend, #watershed-legend {
+                max-width: 200px;
+                padding: 12px;
+            }
+            #header {
+                padding: 10px 12px;
+            }
+            #header h1 {
+                font-size: 16px;
+            }
+            #header img {
+                height: 24px;
+            }
+            #loading, #message {
+                right: 12px;
+                max-width: 250px;
+            }
+        }
+
+        select:focus, button:focus, input:focus {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 1px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 8px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 8px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #bbb;
+        }
+    </style>
+</head>
+<body>
+    <div id="header" role="banner">
+        <h1><i class="fas fa-globe-americas"></i> Crop Mapping Dashboard</h1>
+        <div class="toggles">
+            <button id="theme-toggle" aria-label="Toggle Theme" title="Toggle dark/light mode"><i class="fas fa-moon"></i></button>
+            <button id="contrast-toggle" aria-label="Toggle High Contrast" title="Toggle high contrast mode"><i class="fas fa-adjust"></i></button>
+        </div>
+    </div>
+    <div id="container">
+        <div id="controls" role="region" aria-label="Control Panel">
+            <h1><i class="fas fa-cog"></i> Controls</h1>
+            <div class="data-section">
+                <h2><i class="fas fa-water"></i> Basins</h2>
+                <select id="basin-select" aria-label="Select Basin">
+                    <option value="">Select a basin...</option>
+                </select>
+                <button id="load-basin" aria-label="Load Basin" title="Load selected basin"><i class="fas fa-map"></i> Load Basin</button>
+            </div>
+            <div class="data-section">
+                <h2><i class="fas fa-stream"></i> Watersheds</h2>
+                <select id="watershed-select" aria-label="Select Watershed">
+                    <option value="">Select a watershed...</option>
+                </select>
+                <button id="load-watershed" aria-label="Load Watershed" title="Load selected watershed"><i class="fas fa-map"></i> Load Watershed</button>
+            </div>
+            <div class="data-section">
+                <h2><i class="fas fa-leaf"></i> Crops</h2>
+                <select id="basin-crop-select" aria-label="Select Basin for Crops">
+                    <option value="">Select a basin...</option>
+                </select>
+                <select id="crop-select" disabled aria-label="Select Crop">
+                    <option value="">Select a basin first...</option>
+                </select>
+                <button id="load-crop" disabled aria-label="Load Crop" title="Load selected crop"><i class="fas fa-map"></i> Load Crop</button>
+            </div>
+            <div class="data-section">
+                <h2><i class="fas fa-layer-group"></i> Active Layers</h2>
+                <div id="active-layers" aria-label="Active Layers List"></div>
+                <button id="clear-layers" aria-label="Clear All Layers" title="Clear all layers"><i class="fas fa-trash"></i> Clear All Layers</button>
+                <button id="fit-all-layers" aria-label="Fit All Layers" title="Zoom to all layers"><i class="fas fa-expand"></i> Fit All Layers</button>
+            </div>
+            <div class="data-section">
+                <h2><i class="fas fa-map"></i> Base Map</h2>
+                <select id="base-map-select" aria-label="Select Base Map">
+                    <option value="osm">OpenStreetMap</option>
+                    <option value="satellite">Satellite</option>
+                    <option value="terrain">Terrain</option>
+                </select>
+            </div>
+            <div class="data-section debug-info">
+                <h2><i class="fas fa-bug"></i> Debug Info <button id="debug-toggle" aria-label="Toggle Debug Info"><i class="fas fa-chevron-down"></i></button></h2>
+                <div id="debugOutput" aria-live="polite"></div>
+            </div>
+        </div>
+        <div id="map" role="region" aria-label="Map View"></div>
+        <div id="loading" aria-live="polite"></div>
+        <div id="message" aria-live="assertive"></div>
+        <div id="crop-legend" role="region" aria-label="Crop Legend">
+            <h3><i class="fas fa-leaf"></i> Available Crops <button id="crop-legend-toggle" aria-label="Toggle Crop Legend"><i class="fas fa-chevron-up"></i></button></h3>
+            <ul id="crop-legend-crops"></ul>
+        </div>
+        <div id="watershed-legend" role="region" aria-label="Watershed Legend">
+            <h3><i class="fas fa-stream"></i> Watershed Priority <button id="watershed-legend-toggle" aria-label="Toggle Watershed Legend"><i class="fas fa-chevron-up"></i></button></h3>
+            <ul>
+                <li class="fao"><i class="fas fa-star"></i> FAO Priority Watersheds</li>
+                <li class="other"><i class="fas fa-circle"></i> Other Watersheds</li>
+            </ul>
+        </div>
+        <button id="toggle-controls" aria-label="Toggle Controls" title="Toggle control panel"><i class="fas fa-bars"></i></button>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Lazy-load Font Awesome
+        const fontAwesome = document.createElement('link');
+        fontAwesome.rel = 'stylesheet';
+        fontAwesome.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css';
+        document.head.appendChild(fontAwesome);
+
+        // Initialize map
+        const map = L.map('map', {
+            zoomControl: true,
+            attributionControl: true
+        }).setView([29.5, 67.5], 7);
+
+        // Base maps
+        const baseMaps = {
+            osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }),
+            satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '© Esri'
+            }),
+            terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>'
+            })
+        };
+
+        baseMaps.osm.addTo(map);
+
+        // State management
+        const state = {
+            basins: ["Hamun", "Hingol", "Nari", "Pishin"],
+            activeLayers: {},
+            layerCount: 0,
+            currentCrops: [],
+            loadingProgress: 0,
+            apiCache: new Map() // Cache API responses
+        };
+
+        // Layer styles
+        const layerStyles = {
+            basin: { color: '#8e44ad', weight: 3, fillOpacity: 0.2, fillColor: '#8e44ad' },
+            watershedFAO: { color: '#27ae60', weight: 2, fillOpacity: 0.25, fillColor: '#27ae60' },
+            watershedOther: { color: '#2980b9', weight: 2, fillOpacity: 0.15, fillColor: '#2980b9' },
+            crop: { color: '#e74c3c', weight: 2, fillOpacity: 0.3, fillColor: '#e74c3c' }
+        };
+
+        // Debug logger (console only in production)
+        function debug(message, data = null) {
+            const debugOutput = document.getElementById('debugOutput');
+            if (debugOutput.style.display !== 'none') {
+                const timestamp = new Date().toLocaleTimeString();
+                let logMessage = `[${timestamp}] ${message}`;
+                if (data) {
+                    try {
+                        logMessage += `: ${JSON.stringify(data, null, 2)}`;
+                    } catch (e) {
+                        logMessage += `: [Cannot stringify data]`;
+                    }
+                }
+                const logEntry = document.createElement('div');
+                logEntry.textContent = logMessage;
+                debugOutput.appendChild(logEntry);
+                debugOutput.scrollTop = debugOutput.scrollHeight;
+            }
+            console.log(message, data);
+        }
+
+        // Show message
+        function showMessage(message, isError = false, retryCallback = null) {
+            const messageElement = document.getElementById('message');
+            messageElement.innerHTML = `<i class="fas ${isError ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i> ${message}`;
+            if (retryCallback) {
+                const retryBtn = document.createElement('button');
+                retryBtn.textContent = 'Retry';
+                retryBtn.className = 'close';
+                retryBtn.addEventListener('click', () => {
+                    messageElement.style.display = 'none';
+                    retryCallback();
+                });
+                messageElement.appendChild(retryBtn);
+            }
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.className = 'close';
+            closeBtn.addEventListener('click', () => {
+                messageElement.style.display = 'none';
+            });
+            messageElement.appendChild(closeBtn);
+            messageElement.className = isError ? 'error' : '';
+            messageElement.style.display = 'block';
+            debug(isError ? `ERROR: ${message}` : `Message: ${message}`);
+            clearTimeout(messageElement.hideTimeout);
+            messageElement.hideTimeout = setTimeout(() => {
+                messageElement.style.display = 'none';
+            }, 5000);
+        }
+
+        // Loading indicators
+        function showLoading(message = 'Loading...') {
+            const loadingEl = document.getElementById('loading');
+            loadingEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${message}<div id="loading-progress"><div id="loading-progress-bar"></div></div>`;
+            loadingEl.style.display = 'block';
+            state.loadingProgress = 0;
+            const progressBar = document.getElementById('loading-progress-bar');
+            const updateProgress = () => {
+                state.loadingProgress = Math.min(state.loadingProgress + 5, 95);
+                progressBar.style.width = `${state.loadingProgress}%`;
+                if (loadingEl.style.display === 'block') {
+                    setTimeout(updateProgress, 100);
+                }
+            };
+            updateProgress();
+        }
+
+        function hideLoading() {
+            const loadingEl = document.getElementById('loading');
+            const progressBar = document.getElementById('loading-progress-bar');
+            progressBar.style.width = '100%';
+            setTimeout(() => {
+                loadingEl.style.display = 'none';
+            }, 200);
+        }
+
+        // Handle API response
+        async function handleResponse(response, errorMsg) {
+            if (!response.ok) {
+                let errorDetail = `${errorMsg}: ${response.status}`;
+                try {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType?.includes('application/json')) {
+                        const errorData = await response.json();
+                        errorDetail = errorData.error || errorDetail;
+                    } else {
+                        errorDetail = await response.text() || errorDetail;
+                    }
+                } catch (e) {
+                    errorDetail += ' (Failed to parse error response)';
+                }
+                throw new Error(errorDetail);
+            }
+            return await response.json();
+        }
+
+        // Fetch with retry and caching
+        async function fetchWithRetry(url, errorMsg, retries = 2) {
+            if (state.apiCache.has(url)) {
+                debug(`Cache hit for ${url}`);
+                return state.apiCache.get(url);
+            }
+            for (let i = 0; i <= retries; i++) {
+                try {
+                    debug(`Fetching: ${url} (Attempt ${i + 1}/${retries + 1})`);
+                    const response = await fetch(url);
+                    const data = await handleResponse(response, errorMsg);
+                    state.apiCache.set(url, data);
+                    return data;
+                } catch (error) {
+                    debug(`Fetch failed: ${url}`, { error: error.message });
+                    if (i === retries) {
+                        throw error;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, (i + 1) * 1000)); // Exponential backoff
+                }
+            }
+        }
+
+        // Debounce function
+        function debounce(func, wait) {
+            let timeout;
+            return function (...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func(...args), wait);
+            };
+        }
+
+        // Initialize UI
+        function initUI() {
+            debug('Initializing UI');
+            const basinSelect = document.getElementById('basin-select');
+            const basinCropSelect = document.getElementById('basin-crop-select');
+            const watershedSelect = document.getElementById('watershed-select');
+
+            state.basins.forEach(basin => {
+                ['basin-select', 'basin-crop-select', 'watershed-select'].forEach(selectId => {
+                    const option = document.createElement('option');
+                    option.value = basin;
+                    option.textContent = basin;
+                    document.getElementById(selectId).appendChild(option);
+                });
+            });
+
+            // Event listeners
+            document.getElementById('load-basin').addEventListener('click', loadBasin);
+            document.getElementById('load-watershed').addEventListener('click', loadWatershed);
+            document.getElementById('load-crop').addEventListener('click', loadCrop);
+            document.getElementById('basin-crop-select').addEventListener('change', function() {
+                updateCropOptions(this.value);
+            });
+            document.getElementById('crop-select').addEventListener('change', function() {
+                const loadCropButton = document.getElementById('load-crop');
+                loadCropButton.disabled = !this.value;
+                debug(`Crop select changed: ${this.value}`);
+            });
+            document.getElementById('base-map-select').addEventListener('change', function() {
+                Object.values(baseMaps).forEach(layer => map.removeLayer(layer));
+                baseMaps[this.value].addTo(map);
+                debug(`Changed base map to ${this.value}`);
+            });
+            document.getElementById('toggle-controls').addEventListener('click', function() {
+                const controls = document.getElementById('controls');
+                controls.classList.toggle('collapsed');
+                this.innerHTML = controls.classList.contains('collapsed') 
+                    ? '<i class="fas fa-bars"></i>' 
+                    : '<i class="fas fa-times"></i>';
+                debug(`Controls ${controls.classList.contains('collapsed') ? 'collapsed' : 'expanded'}`);
+            });
+            document.getElementById('clear-layers').addEventListener('click', function() {
+                if (!Object.keys(state.activeLayers).length) {
+                    showMessage('No layers to clear');
+                    return;
+                }
+                Object.values(state.activeLayers).forEach(layerInfo => map.removeLayer(layerInfo.layer));
+                state.activeLayers = {};
+                updateLayerControls();
+                saveLayerState();
+                debug('Cleared all layers');
+                showMessage('All layers cleared');
+            });
+            document.getElementById('fit-all-layers').addEventListener('click', function() {
+                if (!Object.keys(state.activeLayers).length) {
+                    showMessage('No layers to fit');
+                    return;
+                }
+                const bounds = L.latLngBounds();
+                Object.values(state.activeLayers).forEach(layerInfo => {
+                    if (map.hasLayer(layerInfo.layer)) {
+                        bounds.extend(layerInfo.layer.getBounds());
+                    }
+                });
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [20, 20] });
+                    debug('Fitted to all visible layers');
+                    showMessage('Zoomed to all visible layers');
+                } else {
+                    showMessage('No visible layers to fit');
+                }
+            });
+            document.getElementById('crop-legend-toggle').addEventListener('click', function() {
+                const legend = document.getElementById('crop-legend');
+                legend.classList.toggle('collapsed');
+                this.innerHTML = legend.classList.contains('collapsed') 
+                    ? '<i class="fas fa-chevron-down"></i>' 
+                    : '<i class="fas fa-chevron-up"></i>';
+                debug(`Crop legend ${legend.classList.contains('collapsed') ? 'collapsed' : 'expanded'}`);
+            });
+            document.getElementById('watershed-legend-toggle').addEventListener('click', function() {
+                const legend = document.getElementById('watershed-legend');
+                legend.classList.toggle('collapsed');
+                this.innerHTML = legend.classList.contains('collapsed') 
+                    ? '<i class="fas fa-chevron-down"></i>' 
+                    : '<i class="fas fa-chevron-up"></i>';
+                debug(`Watershed legend ${legend.classList.contains('collapsed') ? 'collapsed' : 'expanded'}`);
+            });
+            document.getElementById('theme-toggle').addEventListener('click', function() {
+                const newTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+                document.documentElement.dataset.theme = newTheme;
+                this.innerHTML = newTheme === 'dark' 
+                    ? '<i class="fas fa-sun"></i>' 
+                    : '<i class="fas fa-moon"></i>';
+                localStorage.setItem('theme', newTheme);
+                debug(`Theme changed to ${newTheme}`);
+            });
+            document.getElementById('contrast-toggle').addEventListener('click', function() {
+                const newContrast = document.documentElement.dataset.contrast === 'high' ? 'normal' : 'high';
+                document.documentElement.dataset.contrast = newContrast;
+                this.innerHTML = newContrast === 'high' 
+                    ? '<i class="fas fa-eye"></i>' 
+                    : '<i class="fas fa-adjust"></i>';
+                localStorage.setItem('contrast', newContrast);
+                debug(`Contrast changed to ${newContrast}`);
+            });
+            document.getElementById('debug-toggle').addEventListener('click', function() {
+                const debugOutput = document.getElementById('debugOutput');
+                debugOutput.style.display = debugOutput.style.display === 'none' ? 'block' : 'none';
+                this.innerHTML = debugOutput.style.display === 'none' 
+                    ? '<i class="fas fa-chevron-down"></i>' 
+                    : '<i class="fas fa-chevron-up"></i>';
+                debug(`Debug output ${debugOutput.style.display === 'none' ? 'collapsed' : 'expanded'}`);
+            });
+
+            // Load saved theme and contrast
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.dataset.theme = savedTheme;
+            document.getElementById('theme-toggle').innerHTML = savedTheme === 'dark' 
+                ? '<i class="fas fa-sun"></i>' 
+                : '<i class="fas fa-moon"></i>';
+
+            const savedContrast = localStorage.getItem('contrast') || 'normal';
+            document.documentElement.dataset.contrast = savedContrast;
+            document.getElementById('contrast-toggle').innerHTML = savedContrast === 'high' 
+                ? '<i class="fas fa-eye"></i>' 
+                : '<i class="fas fa-adjust"></i>';
+
+            // Mobile controls
+            if (window.innerWidth <= 768) {
+                document.getElementById('toggle-controls').style.display = 'block';
+                document.getElementById('controls').classList.add('collapsed');
+            }
+
+            // Welcome message
+            if (!localStorage.getItem('seenWelcome')) {
+                showMessage('Welcome to the Crop Mapping Dashboard! Visualize basins, watersheds, and crops in Balochistan.');
+                localStorage.setItem('seenWelcome', 'true');
+            }
+
+            // Keyboard navigation
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    document.getElementById('controls').classList.add('collapsed');
+                    document.getElementById('toggle-controls').innerHTML = '<i class="fas fa-bars"></i>';
+                    debug('Controls collapsed via Escape key');
+                }
+            });
+
+            debug('UI initialized');
+        }
+
+        // Update crop options and legend
+      // Update crop options and legend
+function updateCropOptions(basinName) {
+    showLoading('Loading crop list...');
+    const cropSelect = document.getElementById('crop-select');
+    const loadCropButton = document.getElementById('load-crop');
+    const cropLegend = document.getElementById('crop-legend');
+    const cropLegendCrops = document.getElementById('crop-legend-crops');
+
+    cropSelect.innerHTML = '<option value="">Loading crops...</option>';
+    cropSelect.disabled = true;
+    loadCropButton.disabled = true;
+    cropLegend.style.display = 'none';
+
+    if (!basinName) {
+        cropSelect.innerHTML = '<option value="">Select a basin first...</option>';
+        loadCropButton.disabled = true;
+        hideLoading();
+        return;
+    }
+
+    // Fetch the list of crop files from the server
+    fetch(`Data/crops/${basinName}/`)
+        .then(response => response.text())
+        .then(html => {
+            // Parse the directory listing HTML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const links = doc.querySelectorAll('a');
+            
+            // Extract crop names from the filenames
+            const crops = Array.from(links)
+                .map(link => link.href.split('/').pop())
+                .filter(file => file.endsWith('.geojson'))
+                .map(file => file.replace('.geojson', ''))
+                .filter(crop => crop.length > 0);
+
+            debug(`Found crops for ${basinName}:`, crops);
+            
+            // Update the dropdown
+            cropSelect.innerHTML = '<option value="">Select a crop...</option>';
+            state.currentCrops = crops;
+
+            if (state.currentCrops.length > 0) {
+                state.currentCrops.forEach(crop => {
+                    const option = document.createElement('option');
+                    option.value = crop;
+                    option.textContent = crop;
+                    cropSelect.appendChild(option);
+                });
+                cropSelect.disabled = false;
+                loadCropButton.disabled = false;
+            } else {
+                cropSelect.innerHTML = '<option value="">No crops available</option>';
+                loadCropButton.disabled = true;
+                showMessage(`No crop data available for ${basinName}`);
+            }
+
+            // Update legend
+            cropLegendCrops.innerHTML = '';
+            if (state.currentCrops.length > 0) {
+                state.currentCrops.forEach(crop => {
+                    const li = document.createElement('li');
+                    li.textContent = crop;
+                    cropLegendCrops.appendChild(li);
+                });
+                cropLegend.style.display = 'block';
+                cropLegend.querySelector('h3').innerHTML = `<i class="fas fa-leaf"></i> Crops in ${basinName}`;
+            }
+
+            hideLoading();
+        })
+        .catch(error => {
+            console.error('Error loading crops:', error);
+            cropSelect.innerHTML = '<option value="">Error loading crops</option>';
+            loadCropButton.disabled = true;
+            showMessage(`Failed to load crops: ${error.message}`, true, () => updateCropOptions(basinName));
+            hideLoading();
+        });
+}
+
+// Load basin data
+       function loadBasin() {
+    const basinName = document.getElementById('basin-select').value;
+    if (!basinName) {
+        showMessage('Please select a basin', true);
+        return;
+    }
+
+    showLoading(`Loading basin ${basinName}...`);
+    debug(`Loading basin: ${basinName}`);
+
+    fetch(`/data/basins/${basinName}.geojson`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debug(`Received basin data for ${basinName}`, data);
+            
+            const layer = L.geoJSON(data, {
+                style: layerStyles.basin,
+                onEachFeature: (feature, layer) => {
+                    const areaStr = feature.properties?.area ? 
+                        Number(feature.properties.area).toLocaleString() : 'N/A';
+                    layer.bindPopup(`<b>Basin: ${basinName}</b><br>Area: ${areaStr} km²`);
+                    layer.on({
+                        mouseover: function() {
+                            this.setStyle({ weight: 4, fillOpacity: 0.3 });
+                            this.bringToFront();
+                        },
+                        mouseout: function() {
+                            layer.setStyle(layerStyles.basin);
+                        }
+                    });
+                }
+            }).addTo(map);
+
+            const layerId = `basin-${basinName}-${state.layerCount++}`;
+            state.activeLayers[layerId] = {
+                layer,
+                name: `Basin: ${basinName}`,
+                type: 'basin',
+                opacity: 0.2
+            };
+
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+            updateLayerControls();
+            saveLayerState();
+            hideLoading();
+            showMessage(`Basin ${basinName} loaded`);
+            updateCropOptions(basinName);
+        })
+        .catch(error => {
+            debug(`Error loading basin`, error);
+            hideLoading();
+            showMessage(`Error loading basin: ${error.message}`, true, loadBasin);
+        });
+}
+        // Load watershed data
+       function loadWatershed() {
+    const basinName = document.getElementById('watershed-select').value;
+    if (!basinName) {
+        showMessage('Please select a watershed', true);
+        return;
+    }
+
+    showLoading(`Loading watershed ${basinName}...`);
+    debug(`Loading watershed: ${basinName}`);
+
+    fetch(`/Data/water/SHPs/${basinName}.geojson`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debug(`Received watershed data for ${basinName}`, data);
+            
+            const layer = L.geoJSON(data, {
+                style: feature => feature.properties?.FAO_Priority ? layerStyles.watershedFAO : layerStyles.watershedOther,
+                onEachFeature: (feature, layer) => {
+                    const name = feature.properties?.Name || 'Unnamed Watershed';
+                    const areaStr = feature.properties?.area ? 
+                        Number(feature.properties.area).toLocaleString() : 'N/A';
+                    const priority = feature.properties?.FAO_Priority ? 'FAO Priority' : 'Other';
+                    layer.bindPopup(`<b>Watershed: ${name}</b><br>Basin: ${basinName}<br>Priority: ${priority}<br>Area: ${areaStr} km²`);
+                    layer.bindTooltip(name, {
+                        sticky: true,
+                        offset: [10, 10],
+                        direction: 'auto'
+                    });
+                    layer.on({
+                        mouseover: function() {
+                            this.setStyle({ weight: 3, fillOpacity: 0.35 });
+                            this.bringToFront();
+                        },
+                        mouseout: function() {
+                            this.setStyle(feature.properties?.FAO_Priority ? layerStyles.watershedFAO : layerStyles.watershedOther);
+                        }
+                    });
+                }
+            }).addTo(map);
+
+            const layerId = `watershed-${basinName}-${state.layerCount++}`;
+            state.activeLayers[layerId] = {
+                layer,
+                name: `Watershed: ${basinName}`,
+                type: 'watershed',
+                opacity: 0.25
+            };
+
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+            updateLayerControls();
+            saveLayerState();
+            hideLoading();
+            showMessage(`Watershed ${basinName} loaded`);
+            document.getElementById('watershed-legend').style.display = 'block';
+        })
+        .catch(error => {
+            debug(`Error loading watershed`, error);
+            hideLoading();
+            showMessage(`Error loading watershed: ${error.message}`, true, loadWatershed);
+        });
+}
+        // Load crop data
+       function loadCrop() {
+    const basinName = document.getElementById('basin-crop-select').value;
+    const cropName = document.getElementById('crop-select').value;
+    if (!basinName || !cropName) {
+        showMessage('Please select both a basin and a crop', true);
+        debug('Load crop failed: Missing basin or crop', { basinName, cropName });
+        return;
+    }
+
+    showLoading(`Loading crop ${cropName}...`);
+    debug(`Loading crop: ${cropName} in ${basinName}`);
+
+    fetch(`/data/crops/${basinName}/${cropName}.geojson`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debug(`Received crop data for ${cropName} in ${basinName}`, data);
+            
+            const layer = L.geoJSON(data, {
+                style: layerStyles.crop,
+                onEachFeature: (feature, layer) => {
+                    const areaStr = feature.properties?.area ? 
+                        Number(feature.properties.area).toLocaleString() : 'N/A';
+                    layer.bindPopup(`<b>Crop: ${cropName}</b><br>Basin: ${basinName}<br>Area: ${areaStr} ha`);
+                    layer.on({
+                        mouseover: function() {
+                            this.setStyle({ weight: 3, fillOpacity: 0.4 });
+                            this.bringToFront();
+                        },
+                        mouseout: function() {
+                            layer.setStyle(layerStyles.crop);
+                        }
+                    });
+                }
+            }).addTo(map);
+
+            const layerId = `crop-${basinName}-${cropName}-${state.layerCount++}`;
+            state.activeLayers[layerId] = {
+                layer,
+                name: `Crop: ${cropName} (${basinName})`,
+                type: 'crop',
+                opacity: 0.3
+            };
+
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+            updateLayerControls();
+            saveLayerState();
+            hideLoading();
+            showMessage(`Crop ${cropName} loaded`);
+        })
+        .catch(error => {
+            debug(`Error loading crop`, { error: error.message, basinName, cropName });
+            hideLoading();
+            showMessage(`Error loading crop ${cropName}: ${error.message}`, true, loadCrop);
+        });
+}
+        
+// Update layer controls
+        function updateLayerControls() {
+            const container = document.getElementById('active-layers');
+            container.innerHTML = '';
+
+            if (!Object.keys(state.activeLayers).length) {
+                const noLayers = document.createElement('p');
+                noLayers.textContent = 'No active layers';
+                noLayers.style.textAlign = 'center';
+                noLayers.style.color = '#999';
+                noLayers.style.padding = '8px';
+                container.appendChild(noLayers);
+                debug('No active layers to display');
+                return;
+            }
+
+            Object.entries(state.activeLayers).forEach(([id, layerInfo]) => {
+                const item = document.createElement('div');
+                item.className = 'layer-control';
+                item.dataset.layerId = id;
+                item.setAttribute('aria-label', `Control for layer ${layerInfo.name}`);
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = map.hasLayer(layerInfo.layer);
+                checkbox.id = `layer-${id}`;
+                checkbox.setAttribute('aria-label', `Toggle visibility of ${layerInfo.name}`);
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        map.addLayer(layerInfo.layer);
+                        layerInfo.layer.setStyle({ fillOpacity: layerInfo.opacity });
+                    } else {
+                        map.removeLayer(layerInfo.layer);
+                    }
+                    saveLayerState();
+                    debug(`Layer ${layerInfo.name} ${this.checked ? 'shown' : 'hidden'}`, { layerId: id });
+                });
+
+                const label = document.createElement('label');
+                label.htmlFor = `layer-${id}`;
+                label.textContent = layerInfo.name;
+                label.title = 'Click to zoom to layer';
+                label.setAttribute('aria-label', `Zoom to ${layerInfo.name}`);
+                label.addEventListener('click', () => {
+                    if (map.hasLayer(layerInfo.layer)) {
+                        map.fitBounds(layerInfo.layer.getBounds(), { padding: [20, 20] });
+                        debug(`Zoomed to layer ${layerInfo.name}`, { layerId: id });
+                    } else {
+                        showMessage(`Layer ${layerInfo.name} is hidden. Enable visibility to zoom.`);
+                    }
+                });
+
+                const opacitySlider = document.createElement('input');
+                opacitySlider.type = 'range';
+                opacitySlider.min = '0';
+                opacitySlider.max = '1';
+                opacitySlider.step = '0.1';
+                opacitySlider.value = layerInfo.opacity;
+                opacitySlider.setAttribute('aria-label', `Adjust opacity for ${layerInfo.name}`);
+                const updateOpacity = debounce(function() {
+                    layerInfo.opacity = this.value;
+                    if (map.hasLayer(layerInfo.layer)) {
+                        layerInfo.layer.setStyle({ fillOpacity: this.value });
+                    }
+                    saveLayerState();
+                    debug(`Updated opacity for ${layerInfo.name}: ${this.value}`, { layerId: id });
+                }, 100);
+                opacitySlider.addEventListener('input', updateOpacity);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+                removeBtn.title = 'Remove layer';
+                removeBtn.setAttribute('aria-label', `Remove ${layerInfo.name}`);
+                removeBtn.addEventListener('click', function() {
+                    map.removeLayer(layerInfo.layer);
+                    delete state.activeLayers[id];
+                    updateLayerControls();
+                    saveLayerState();
+                    debug(`Removed layer ${layerInfo.name}`, { layerId: id });
+                    showMessage(`Removed layer: ${layerInfo.name}`);
+                });
+
+                item.appendChild(checkbox);
+                item.appendChild(label);
+                item.appendChild(opacitySlider);
+                item.appendChild(removeBtn);
+                container.appendChild(item);
+            });
+
+            debug('Layer controls updated', { activeLayers: Object.keys(state.activeLayers) });
+        }
+
+        // Save layer state to localStorage
+        function saveLayerState() {
+            const layerState = Object.entries(state.activeLayers).map(([id, layerInfo]) => ({
+                id,
+                name: layerInfo.name,
+                type: layerInfo.type,
+                visible: map.hasLayer(layerInfo.layer),
+                opacity: layerInfo.opacity
+            }));
+            localStorage.setItem('layerState', JSON.stringify(layerState));
+            debug('Saved layer state', { layers: layerState.length });
+        }
+
+        // Load layer state from localStorage
+        function loadLayerState() {
+            const layerState = localStorage.getItem('layerState');
+            if (layerState) {
+                const layers = JSON.parse(layerState);
+                layers.forEach(layer => {
+                    if (state.activeLayers[layer.id]) {
+                        state.activeLayers[layer.id].opacity = layer.opacity;
+                        if (map.hasLayer(state.activeLayers[layer.id].layer)) {
+                            state.activeLayers[layer.id].layer.setStyle({ fillOpacity: layer.opacity });
+                        }
+                        if (!layer.visible) {
+                            map.removeLayer(state.activeLayers[layer.id].layer);
+                        }
+                        debug(`Restored layer state: ${layer.name}`, { visible: layer.visible, opacity: layer.opacity });
+                    }
+                });
+                updateLayerControls();
+            }
+        }
+
+        // Initialize application
+        function init() {
+            debug('Application starting');
+            initUI();
+
+            // Add controls
+            map.zoomControl.setPosition('bottomright');
+            L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+
+            // Handle resize
+            window.addEventListener('resize', () => {
+                if (window.innerWidth <= 768) {
+                    document.getElementById('toggle-controls').style.display = 'block';
+                } else {
+                    document.getElementById('toggle-controls').style.display = 'none';
+                    document.getElementById('controls').classList.remove('collapsed');
+                }
+            });
+
+            // Load saved layer state
+            loadLayerState();
+
+            // Show watershed legend
+            document.getElementById('watershed-legend').style.display = 'block';
+
+            debug('Application initialized');
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
